@@ -13,7 +13,7 @@ Set these environment variables before starting:
 
 - `CF_TOKEN_URL` (required) - OAuth token endpoint.
 - `CF_CLIENT_ID` (required) - service client ID.
-- `CF_CLIENT_SECRET` (required) - service client Secret.
+- `CF_CLIENT_SECRET` (required) - service client secret.
 - `CF_AUDIENCE` (optional) - audience for the token request.
 - `CF_SCOPE` (optional) - scope for the token request.
 - `PORT` (optional) - server port, defaults to `3000`.
