@@ -31,7 +31,7 @@ class TokenService {
     const response = await this.fetchImpl(tokenUrl, {
       method: "POST",
       headers: {
-        "content-type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/x-www-form-urlencoded"
       },
       body
     });
