@@ -1,3 +1,5 @@
+const TOKEN_EXPIRY_BUFFER_MS = 5000;
+
 class TokenService {
   constructor({ fetchImpl = fetch, now = () => Date.now() } = {}) {
     this.fetchImpl = fetchImpl;
@@ -10,7 +12,7 @@ class TokenService {
       throw new Error("Missing Cloudflare token configuration");
     }
 
-    if (this.cache && this.cache.expiresAtMs > this.now() + 5000) {
+    if (this.cache && this.cache.expiresAtMs > this.now() + TOKEN_EXPIRY_BUFFER_MS) {
       return this.cache.token;
     }
 
