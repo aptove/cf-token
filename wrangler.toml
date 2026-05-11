@@ -1,0 +1,19 @@
+name = "token-service"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+routes = [{ pattern = "token.aptove.com", custom_domain = true }]
+
+[[kv_namespaces]]
+binding = "CLIENT_REGISTRY"
+id = "<set after: wrangler kv namespace create CLIENT_REGISTRY>"
+
+[vars]
+TOKEN_ISSUER    = "https://token.aptove.com"
+TOKEN_AUDIENCE  = "https://push.aptove.com"
+ADMIN_CLIENT_ID = "admin"  # override per deployment
+
+# Secrets (wrangler secret put):
+# RS_PRIVATE_KEY       — PEM of RSA-2048 private key (from scripts/generate-keys.mjs)
+# ADMIN_CLIENT_SECRET  — secret for the admin client identified by ADMIN_CLIENT_ID
