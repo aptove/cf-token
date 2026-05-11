@@ -1,0 +1,22 @@
+meta {
+  name: Health Check
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/health
+  body: none
+  auth: none
+}
+
+docs {
+  Health check endpoint to verify the token service is running.
+
+  No authentication required.
+
+  Returns:
+  - ok: true
+  - status: "healthy"
+  - timestamp: ISO-8601 timestamp
+}

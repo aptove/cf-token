@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Token Service API",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

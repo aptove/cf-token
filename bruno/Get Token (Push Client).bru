@@ -1,0 +1,39 @@
+meta {
+  name: Get Token (Push Client)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{base_url}}/token
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "client_id": "{{new_client_id}}",
+    "client_secret": "{{new_client_secret}}"
+  }
+}
+
+docs {
+  Request an RS256 JWT for a push:write client (e.g. a bridge instance).
+
+  No authentication header required — credentials are in the request body.
+  Use the client_id and client_secret returned by "Create Client".
+
+  The returned access_token has scope "push:write" and is accepted by
+  cf-push-relay for /register, /push, and DELETE /register.
+
+  Bridges do this automatically using credentials from common.toml [push_relay].
+  Use this request to manually verify a client or test the push relay.
+
+  Copy the access_token into the access_token environment variable, then use
+  the cf-push-relay Bruno collection to test push delivery.
+
+  Returns:
+  - access_token: RS256 JWT (1h TTL)
+  - token_type: "Bearer"
+  - expires_in: 3600
+}

@@ -1,0 +1,37 @@
+meta {
+  name: Delete Client
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{base_url}}/clients/{{new_client_id}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{admin_access_token}}
+}
+
+docs {
+  Revoke a client by deleting it from the registry.
+
+  Authentication:
+  - Authorization: Bearer <admin_jwt>  (scope must be "admin")
+
+  After deletion, any JWTs previously issued to this client remain valid until
+  they expire (up to 1h). The client can no longer obtain new JWTs.
+
+  To immediately block a compromised client, delete it here and also rotate
+  the RS256 key pair (redeploy cf-token with a new RS_PRIVATE_KEY secret).
+  cf-push-relay will invalidate its JWKS cache on the next unknown-kid error.
+
+  Returns:
+  - ok: true
+  - message: "Client deleted"
+
+  Errors:
+  - 401 if admin JWT is missing or invalid
+  - 404 if client_id not in path
+}

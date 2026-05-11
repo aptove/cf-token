@@ -1,0 +1,50 @@
+meta {
+  name: Create Client
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/clients
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{admin_access_token}}
+}
+
+body:json {
+  {
+    "client_id": "{{new_client_id}}",
+    "scope": "push:write"
+  }
+}
+
+docs {
+  Create a new client in the registry.
+
+  Authentication:
+  - Authorization: Bearer <admin_jwt>  (scope must be "admin")
+
+  The client_secret is generated server-side (32-byte hex), hashed with
+  PBKDF2-SHA256 (100k iterations), and stored in KV. The plaintext secret
+  is returned ONCE in this response — it cannot be retrieved again.
+
+  scope values:
+  - "push:write"  — for bridge instances (use with cf-push-relay)
+  - "admin"       — for admin tooling (can manage other clients)
+
+  Save the returned client_id and client_secret for use in common.toml
+  [push_relay] config on the bridge.
+
+  Returns:
+  - ok: true
+  - client_id: the requested client_id
+  - client_secret: plaintext secret (shown once — store it now)
+
+  Errors:
+  - 401 if admin JWT is missing or invalid
+  - 400 if client_id missing or scope invalid
+  - 409 if client_id already exists
+}

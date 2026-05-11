@@ -1,0 +1,25 @@
+meta {
+  name: Get JWKS
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/.well-known/jwks.json
+  body: none
+  auth: none
+}
+
+docs {
+  Returns the JSON Web Key Set (JWKS) containing the public RS256 key used to
+  verify JWTs issued by this service.
+
+  No authentication required. Response is publicly cacheable (max-age=3600).
+
+  Consumers (e.g. cf-push-relay) fetch this endpoint to verify Bearer JWTs.
+  The push relay caches the JWKS in KV for 1 hour and invalidates the cache
+  on unknown kid (key rotation support).
+
+  Returns:
+  - keys: Array of JWK objects (kty, use, alg, kid, n, e)
+}
