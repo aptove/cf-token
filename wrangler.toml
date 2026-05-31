@@ -7,7 +7,7 @@ routes = [{ pattern = "token.aptove.com", custom_domain = true }]
 
 [[kv_namespaces]]
 binding = "CLIENT_REGISTRY"
-id = "<set after: wrangler kv namespace create CLIENT_REGISTRY>"
+id = "d1b25e01c8b74cc49b241bcb2cb26366"
 
 [observability]
 enabled = false

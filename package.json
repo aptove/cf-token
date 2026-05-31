@@ -1,7 +1,7 @@
 {
-  "name": "token-service",
-  "version": "1.0.0",
-  "private": true,
+  "name": "@aptove/token-service",
+  "version": "0.1.1",
+  "private": false,
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -14,6 +14,6 @@
     "@cloudflare/workers-types": "^4.20241205.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0",
-    "wrangler": "^3.99.0"
+    "wrangler": "^4.95.0"
   }
 }
