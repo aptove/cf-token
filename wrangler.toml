@@ -9,9 +9,20 @@ routes = [{ pattern = "token.aptove.com", custom_domain = true }]
 binding = "CLIENT_REGISTRY"
 id = "<set after: wrangler kv namespace create CLIENT_REGISTRY>"
 
+[observability]
+enabled = false
+head_sampling_rate = 1
+
 [observability.logs]
 enabled = true
+head_sampling_rate = 1
+persist = true
 invocation_logs = true
+
+[observability.traces]
+enabled = true
+persist = true
+head_sampling_rate = 1
 
 [vars]
 TOKEN_ISSUER    = "https://token.aptove.com"
