@@ -53,7 +53,7 @@ async function getPrivateKey(env: Env): Promise<CryptoKey> {
 export async function getPublicCryptoKey(env: Env): Promise<CryptoKey> {
   if (cachedPublicKey) return cachedPublicKey;
   const privateKey = await getPrivateKey(env);
-  const jwk = await crypto.subtle.exportKey("jwk", privateKey);
+  const jwk = await crypto.subtle.exportKey("jwk", privateKey) as JsonWebKey;
   cachedPublicKey = await crypto.subtle.importKey(
     "jwk",
     { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: "RS256", key_ops: ["verify"] },
@@ -68,7 +68,7 @@ export async function getPublicCryptoKey(env: Env): Promise<CryptoKey> {
 async function getKid(env: Env): Promise<string> {
   if (cachedKid) return cachedKid;
   const privateKey = await getPrivateKey(env);
-  const jwk = await crypto.subtle.exportKey("jwk", privateKey);
+  const jwk = await crypto.subtle.exportKey("jwk", privateKey) as JsonWebKey;
   const nBytes = b64urlToBytes(jwk.n as string);
   const hashBuf = await crypto.subtle.digest("SHA-256", nBytes);
   const hashHex = Array.from(new Uint8Array(hashBuf))
@@ -82,7 +82,7 @@ async function getKid(env: Env): Promise<string> {
 export async function getJwks(env: Env): Promise<string> {
   if (cachedJwks) return cachedJwks;
   const privateKey = await getPrivateKey(env);
-  const jwk = await crypto.subtle.exportKey("jwk", privateKey);
+  const jwk = await crypto.subtle.exportKey("jwk", privateKey) as JsonWebKey;
   const kid = await getKid(env);
   const jwksDoc = {
     keys: [
