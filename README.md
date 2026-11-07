@@ -128,7 +128,7 @@ curl -s -X POST https://token.aptove.com/clients \
   -H "Authorization: Bearer $ADMIN_JWT" \
   -d '{"client_id":"bridge-home-office","scope":"push:write"}'
 ```
-Copy the returned `client_id` and `client_secret` into Aptove CLI's `common.toml`:
+Copy the returned `client_id` and `client_secret` into Aptove Router's `common.toml`:
 ```toml
 [push_relay]
 url           = "https://push.aptove.com"
@@ -171,7 +171,7 @@ Tests generate a fresh RSA key pair via `crypto.subtle.generateKey` — no exter
 - The RSA-2048 private key lives only in Cloudflare Secrets (`RS_PRIVATE_KEY`) — never in source code or KV
 - Client secrets are stored hashed (PBKDF2-SHA256, 100k iterations, 16-byte random salt) — the plaintext is never persisted
 - Admin credentials are compared byte-by-byte in constant time to prevent timing attacks
-- JWTs expire after 1 hour; Aptove CLI fetches a new one when < 60 seconds remain
+- JWTs expire after 1 hour; Aptove Router fetches a new one when < 60 seconds remain
 - Revoking a client prevents new JWTs but does not invalidate already-issued ones (stateless JWTs); for immediate revocation, also rotate the RSA key pair
 
 ## Key Rotation

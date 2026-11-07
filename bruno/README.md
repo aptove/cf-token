@@ -41,10 +41,10 @@ This Bruno collection covers all endpoints of the cf-token Cloudflare Worker —
                            → set admin_access_token env var
 3. Create Client         — set new_client_id (e.g. "bridge-home-office"), scope "push:write"
                            → response contains client_id + client_secret (shown ONCE)
-                           → copy both into common.toml [push_relay] on Aptove CLI
+                           → copy both into common.toml [push_relay] on Aptove Router
 ```
 
-### Verifying an Aptove CLI client token
+### Verifying an Aptove Router client token
 
 ```
 4. Get Token (Push Client) — set new_client_id + new_client_secret
