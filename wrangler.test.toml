@@ -1,0 +1,38 @@
+# Test-only wrangler config — permissive rate limits for tests
+name = "token-service"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "CLIENT_REGISTRY"
+id = "test-client-registry"
+
+[vars]
+TOKEN_ISSUER    = "https://token.aptove.com"
+TOKEN_AUDIENCE  = "https://push.aptove.com"
+ADMIN_CLIENT_ID = "admin"
+TOKEN_BUCKET_CAPACITY = "999999"
+TOKEN_REFILL_INTERVAL_MS = "1"
+
+# Permissive rate limits for tests
+[[ratelimits]]
+name = "TOKEN_ABUSE_LIMITER"
+namespace_id = "2001"
+  [ratelimits.simple]
+  limit = 1000
+  period = 60
+
+[[ratelimits]]
+name = "HEALTH_LIMITER"
+namespace_id = "2002"
+  [ratelimits.simple]
+  limit = 1000
+  period = 60
+
+[[ratelimits]]
+name = "JWKS_LIMITER"
+namespace_id = "2003"
+  [ratelimits.simple]
+  limit = 1000
+  period = 60

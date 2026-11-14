@@ -2,19 +2,26 @@ import type { Env, JwtClaims } from "./types";
 import { signJwt, getJwks } from "./keys";
 import { verifyAdminJwt } from "./auth";
 import { createClient, getClient, deleteClient, verifySecret } from "./clients";
+import { checkTokenBucket, type BucketConfig } from "./ratelimit";
 
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const { pathname } = url;
   const method = request.method;
 
-  // GET /health
+  // GET /health (no auth — IP-based rate limit only)
   if (method === "GET" && pathname === "/health") {
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const { success } = await env.HEALTH_LIMITER.limit({ key: ip });
+    if (!success) return rateLimitResponse();
     return json({ ok: true, status: "healthy", timestamp: new Date().toISOString() });
   }
 
-  // GET /.well-known/jwks.json
+  // GET /.well-known/jwks.json (no auth — IP-based rate limit only)
   if (method === "GET" && pathname === "/.well-known/jwks.json") {
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const { success } = await env.JWKS_LIMITER.limit({ key: ip });
+    if (!success) return rateLimitResponse();
     const jwks = await getJwks(env);
     return new Response(jwks, {
       headers: {
@@ -60,6 +67,18 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
   if (!client_id || !client_secret) {
     return json({ ok: false, error: "invalid_client" }, 401);
   }
+
+  // Tier 1: Cloudflare native hard spacing (1/min per client)
+  const { success: abuseOk } = await env.TOKEN_ABUSE_LIMITER.limit({ key: client_id });
+  if (!abuseOk) return rateLimitResponse();
+
+  // Tier 2: Token bucket (capacity 5, refill 1/hr) — fires before PBKDF2 for brute-force protection
+  const tokenConfig: BucketConfig = {
+    capacity: parseInt(env.TOKEN_BUCKET_CAPACITY) || 5,
+    refillIntervalMs: parseInt(env.TOKEN_REFILL_INTERVAL_MS) || 3600000,
+  };
+  const bucket = await checkTokenBucket(env.CLIENT_REGISTRY, `token:${client_id}`, tokenConfig);
+  if (!bucket.allowed) return rateLimitResponse(bucket.retryAfterSeconds);
 
   let scope: "push:write" | "admin";
   let verified = false;
@@ -166,4 +185,18 @@ function json(data: object, status = 200): Response {
       "cache-control": "no-store",
     },
   });
+}
+
+function rateLimitResponse(retryAfterSeconds?: number): Response {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+  };
+  if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) {
+    headers["Retry-After"] = String(retryAfterSeconds);
+  }
+  return new Response(
+    JSON.stringify({ ok: false, error: "Rate limit exceeded" }),
+    { status: 429, headers },
+  );
 }

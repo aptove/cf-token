@@ -164,7 +164,50 @@ npm run test:watch # watch mode
 npm run typecheck  # TypeScript type checking
 ```
 
-Tests generate a fresh RSA key pair via `crypto.subtle.generateKey` — no external services needed.
+Tests run on [Miniflare](https://miniflare.dev/) (Cloudflare's local Worker simulator) via `@cloudflare/vitest-pool-workers` — entirely in-memory, no Cloudflare account or network access needed. Tests generate a fresh RSA key pair via `crypto.subtle.generateKey` so they run entirely offline.
+
+### Test configuration
+
+Tests use a separate `wrangler.test.toml` (referenced by `vitest.config.mts`) instead of the production `wrangler.toml`. This test config provides:
+
+- **Permissive Cloudflare native rate limits** (`limit = 1000` instead of `1`) so Tier 1 abuse ceilings don't interfere with tests that make multiple requests.
+- **Permissive token bucket parameters** via `miniflare.bindings` overrides (`TOKEN_BUCKET_CAPACITY = "999999"`, `TOKEN_REFILL_INTERVAL_MS = "1"`) so Tier 2 token buckets are effectively unlimited.
+- **Fake KV namespace ID** (`test-client-registry`) that doesn't correspond to a real Cloudflare namespace — Miniflare creates an in-memory store for it.
+
+This separation ensures existing tests (JWT issuance, client CRUD, JWKS endpoint, etc.) exercise the real application logic without being blocked by rate limits, while production deployments via `wrangler deploy` always use the restrictive `wrangler.toml` config.
+
+## Rate Limiting
+
+Every endpoint has rate limiting to prevent abuse and brute-force attacks.
+
+| Tier | Mechanism | Purpose |
+|------|-----------|---------|
+| **Tier 1 — Abuse ceiling** | Cloudflare native `[[ratelimits]]` binding | Hard cutoff for burst abuse/DoS. Zero KV cost. |
+| **Tier 2 — Token bucket** | KV-backed token bucket | Sustained rate control with configurable burst. |
+
+### Per-endpoint limits
+
+| Endpoint | Tier 1 (native) | Tier 2 bucket capacity | Tier 2 refill rate | Sustained max |
+|----------|-----------------|------------------------|--------------------|--------------:|
+| `POST /token` | 1 req/min per `client_id` | 5 | 1 token per 1 hr | 1/hr |
+| `GET /health` | 1 req/min per IP | — | — | 1/min |
+| `GET /.well-known/jwks.json` | 1 req/min per IP | — | — | 1/min |
+
+**Brute-force protection:** Rate limiting on `POST /token` fires *before* the PBKDF2-SHA256 credential check. This prevents attackers from using the endpoint to test secrets at high speed — they are limited to 1 attempt per minute regardless of whether the secret is correct.
+
+### Configuration
+
+Token bucket parameters are configurable via `[vars]` in `wrangler.toml`:
+
+```toml
+[vars]
+TOKEN_BUCKET_CAPACITY = "5"
+TOKEN_REFILL_INTERVAL_MS = "3600000"  # 1 hour
+```
+
+### Expected usage
+
+Aptove Router caches JWTs for ~1 hour and requests a new one when < 60s TTL remains. Normal usage is ~1 token request per bridge per hour — well within the 5-token burst capacity.
 
 ## Security Model
 

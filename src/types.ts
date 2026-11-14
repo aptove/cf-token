@@ -5,6 +5,15 @@ export interface Env {
   ADMIN_CLIENT_ID: string;      // [vars] — configurable admin client identifier
   TOKEN_ISSUER: string;         // "https://token.aptove.com"
   TOKEN_AUDIENCE: string;       // "https://push.aptove.com"
+
+  // Cloudflare native rate limiters (Tier 1 — hard spacing)
+  TOKEN_ABUSE_LIMITER: RateLimit;
+  HEALTH_LIMITER: RateLimit;
+  JWKS_LIMITER: RateLimit;
+
+  // Token bucket configuration (Tier 2 — precise enforcement)
+  TOKEN_BUCKET_CAPACITY: string;       // default "5"
+  TOKEN_REFILL_INTERVAL_MS: string;    // default "3600000" (1 hr)
 }
 
 /** Client record stored in KV under "client:<client_id>" */

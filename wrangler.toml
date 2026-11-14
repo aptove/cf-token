@@ -29,6 +29,33 @@ TOKEN_ISSUER    = "https://token.aptove.com"
 TOKEN_AUDIENCE  = "https://push.aptove.com"
 ADMIN_CLIENT_ID = "admin"  # override per deployment
 
+# Token bucket rate limit configuration (override per deployment)
+TOKEN_BUCKET_CAPACITY = "5"
+TOKEN_REFILL_INTERVAL_MS = "3600000"      # 1 hour — 1/hr sustained
+
+# Cloudflare native rate limiters (Tier 1 — hard spacing, per client_id)
+[[ratelimits]]
+name = "TOKEN_ABUSE_LIMITER"
+namespace_id = "2001"
+  [ratelimits.simple]
+  limit = 1
+  period = 60
+
+# Cloudflare native rate limiters (Tier 1 — hard spacing, per IP for public endpoints)
+[[ratelimits]]
+name = "HEALTH_LIMITER"
+namespace_id = "2002"
+  [ratelimits.simple]
+  limit = 1
+  period = 60
+
+[[ratelimits]]
+name = "JWKS_LIMITER"
+namespace_id = "2003"
+  [ratelimits.simple]
+  limit = 1
+  period = 60
+
 # Secrets (wrangler secret put):
 # RS_PRIVATE_KEY       — PEM of RSA-2048 private key (from scripts/generate-keys.mjs)
 # ADMIN_CLIENT_SECRET  — secret for the admin client identified by ADMIN_CLIENT_ID

@@ -11,7 +11,7 @@ const testPrivateKey = readFileSync(
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      wrangler: { configPath: "./wrangler.toml" },
+      wrangler: { configPath: "./wrangler.test.toml" },
       miniflare: {
         kvNamespaces: ["CLIENT_REGISTRY"],
         bindings: {
@@ -20,6 +20,8 @@ export default defineConfig({
           ADMIN_CLIENT_ID: "test-admin",
           TOKEN_ISSUER: "https://token.aptove.com",
           TOKEN_AUDIENCE: "https://push.aptove.com",
+          TOKEN_BUCKET_CAPACITY: "999999",
+          TOKEN_REFILL_INTERVAL_MS: "1",
         },
       },
     }),
