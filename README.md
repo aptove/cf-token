@@ -116,18 +116,24 @@ npm run deploy
 ### 7. Create bridge clients
 After deployment, use the admin credentials to register each bridge:
 ```bash
-# 1. Get admin JWT
+# 1. Get admin JWT (never echo the value — it will appear in shell history and logs)
 ADMIN_JWT=$(curl -s -X POST https://token.aptove.com/token \
   -H "Content-Type: application/json" \
   -d '{"client_id":"admin","client_secret":"<ADMIN_CLIENT_SECRET>"}' \
   | jq -r .access_token)
+[ -n "$ADMIN_JWT" ] && echo "Token acquired." || echo "ERROR: token is empty — check credentials."
 
 # 2. Create a bridge client
 curl -s -X POST https://token.aptove.com/clients \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ADMIN_JWT" \
   -d '{"client_id":"bridge-home-office","scope":"push:write"}'
+
+# 3. Unset the token when done
+unset ADMIN_JWT
 ```
+
+> **Security note:** Admin JWTs have a short lifetime (15–60 min). Never print `$ADMIN_JWT` directly — use `[ -n "$ADMIN_JWT" ]` to verify it was set.
 Copy the returned `client_id` and `client_secret` into Aptove Router's `common.toml`:
 ```toml
 [push_relay]
