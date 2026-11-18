@@ -70,7 +70,7 @@ Revoke a client. Requires admin JWT.
 ## Setup
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) >= 18
+- [Node.js](https://nodejs.org/) >= 20
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) (`npm i -g wrangler`)
 - A Cloudflare account
 
@@ -133,10 +133,12 @@ curl -s -X POST https://token.aptove.com/clients \
 unset ADMIN_JWT
 ```
 
-> **Security note:** Admin JWTs have a short lifetime (15–60 min). Never print `$ADMIN_JWT` directly — use `[ -n "$ADMIN_JWT" ]` to verify it was set.
+> **Security note:** Admin JWTs have a 1-hour lifetime (3600 s). Never print `$ADMIN_JWT` directly — use `[ -n "$ADMIN_JWT" ]` to verify it was set.
 Copy the returned `client_id` and `client_secret` into Aptove Router's `common.toml`:
 ```toml
-[push_relay]
+push_selection = "aptove"
+
+[aptove_push_relay]
 url           = "https://push.aptove.com"
 token_url     = "https://token.aptove.com"
 client_id     = "bridge-home-office"
