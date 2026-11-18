@@ -27,7 +27,7 @@ head_sampling_rate = 1
 [vars]
 TOKEN_ISSUER    = "https://token.aptove.com"
 TOKEN_AUDIENCE  = "https://push.aptove.com"
-ADMIN_CLIENT_ID = "admin"  # override per deployment
+ADMIN_CLIENT_ID = "CHANGE_ME_BEFORE_DEPLOY"  # REQUIRED: set a unique non-guessable value per deployment
 
 # Token bucket rate limit configuration (override per deployment)
 TOKEN_BUCKET_CAPACITY = "5"

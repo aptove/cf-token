@@ -1,4 +1,4 @@
-import type { Env, JwtClaims } from "./types";
+import type { Env, JwtClaims, ClientRecord } from "./types";
 import { signJwt, getJwks } from "./keys";
 import { verifyAdminJwt } from "./auth";
 import { createClient, getClient, deleteClient, verifySecret } from "./clients";
@@ -68,20 +68,28 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, error: "invalid_client" }, 401);
   }
 
+  let scope: "push:write" | "admin";
+  let verified = false;
+
+  // For regular clients: verify the client_id exists before touching any rate-limit KV.
+  // Unknown client_ids return 401 immediately — no bucket write, no KV cost.
+  let record: ClientRecord | null = null;
+  if (client_id !== env.ADMIN_CLIENT_ID) {
+    record = await getClient(env.CLIENT_REGISTRY, client_id);
+    if (!record) return json({ ok: false, error: "invalid_client" }, 401);
+  }
+
   // Tier 1: Cloudflare native hard spacing (1/min per client)
   const { success: abuseOk } = await env.TOKEN_ABUSE_LIMITER.limit({ key: client_id });
   if (!abuseOk) return rateLimitResponse();
 
-  // Tier 2: Token bucket (capacity 5, refill 1/hr) — fires before PBKDF2 for brute-force protection
+  // Tier 2: Token bucket (capacity 5, refill 1/hr) — brute-force protection for verified clients
   const tokenConfig: BucketConfig = {
     capacity: parseInt(env.TOKEN_BUCKET_CAPACITY) || 5,
     refillIntervalMs: parseInt(env.TOKEN_REFILL_INTERVAL_MS) || 3600000,
   };
   const bucket = await checkTokenBucket(env.CLIENT_REGISTRY, `token:${client_id}`, tokenConfig);
   if (!bucket.allowed) return rateLimitResponse(bucket.retryAfterSeconds);
-
-  let scope: "push:write" | "admin";
-  let verified = false;
 
   if (client_id === env.ADMIN_CLIENT_ID) {
     // Timing-safe comparison for the built-in admin credential
@@ -99,12 +107,9 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
     }
     scope = "admin";
   } else {
-    const record = await getClient(env.CLIENT_REGISTRY, client_id);
-    if (!record) {
-      return json({ ok: false, error: "invalid_client" }, 401);
-    }
-    verified = await verifySecret(client_secret, record);
-    scope = record.scope;
+    // record was already fetched and validated above
+    verified = await verifySecret(client_secret, record!);
+    scope = record!.scope;
   }
 
   if (!verified) {
