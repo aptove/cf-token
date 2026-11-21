@@ -91,3 +91,35 @@ export async function getClient(
 export async function deleteClient(kv: KVNamespace, clientId: string): Promise<void> {
   await kv.delete(`${PREFIX}${clientId}`);
 }
+
+/** Verify a plaintext value against a stored PBKDF2 hash + salt (reused for binding_secret). */
+export async function verifyHash(
+  plaintext: string,
+  storedHash: string,
+  storedSalt: string,
+): Promise<boolean> {
+  const saltBytes = Uint8Array.from(atob(storedSalt), (c) => c.charCodeAt(0));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(plaintext),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const hashBuf = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations: 100_000 },
+    keyMaterial,
+    256,
+  );
+  const derived = btoa(String.fromCharCode(...new Uint8Array(hashBuf)));
+
+  // Constant-time byte comparison
+  const aBytes = Uint8Array.from(atob(derived), (c) => c.charCodeAt(0));
+  const bBytes = Uint8Array.from(atob(storedHash), (c) => c.charCodeAt(0));
+  if (aBytes.length !== bBytes.length) return false;
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i]! ^ bBytes[i]!;
+  }
+  return diff === 0;
+}

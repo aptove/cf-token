@@ -1,7 +1,7 @@
 import type { Env, JwtClaims, ClientRecord } from "./types";
 import { signJwt, getJwks } from "./keys";
 import { verifyAdminJwt } from "./auth";
-import { createClient, getClient, deleteClient, verifySecret } from "./clients";
+import { createClient, getClient, deleteClient, verifySecret, hashSecret, verifyHash } from "./clients";
 import { checkTokenBucket, type BucketConfig } from "./ratelimit";
 
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
@@ -48,6 +48,16 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     return handleDeleteClient(clientId, request, env);
   }
 
+  // GET /admin/clients — list all clients with binding metadata (admin JWT required)
+  if (method === "GET" && pathname === "/admin/clients") {
+    return handleAdminListClients(request, env);
+  }
+
+  // GET /admin/device-overlaps — find same device_id across multiple clients (admin JWT required)
+  if (method === "GET" && pathname === "/admin/device-overlaps") {
+    return handleAdminDeviceOverlaps(request, env);
+  }
+
   return json({ ok: false, error: "Not found" }, 404);
 }
 
@@ -56,7 +66,13 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 // ───────────────────────────────────────────────────────────────────────────────
 
 async function handleToken(request: Request, env: Env): Promise<Response> {
-  let body: { client_id?: string; client_secret?: string };
+  let body: {
+    client_id?: string;
+    client_secret?: string;
+    agent_id?: string;
+    device_id?: string;
+    binding_secret?: string;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -116,6 +132,42 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, error: "invalid_client" }, 401);
   }
 
+  // ── Binding secret enforcement (regular clients only) ──
+  let returnBindingSecret: string | undefined;
+
+  if (record && client_id !== env.ADMIN_CLIENT_ID) {
+    const enforcing = env.ENFORCE_BINDING === "true";
+
+    if (enforcing && record.bound_secret_hash) {
+      // Client already bound — require binding_secret
+      if (!body.binding_secret) {
+        return json({ ok: false, error: "binding_secret_required" }, 403);
+      }
+      const bindingValid = await verifyHash(body.binding_secret, record.bound_secret_hash, record.bound_secret_salt!);
+      if (!bindingValid) {
+        return json({ ok: false, error: "invalid_binding_secret" }, 403);
+      }
+    } else if (enforcing && !record.bound_secret_hash) {
+      // First use — generate and store binding_secret
+      const bindingBytes = crypto.getRandomValues(new Uint8Array(32));
+      returnBindingSecret = Array.from(bindingBytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const { hashed_secret: bHash, salt: bSalt } = await hashSecret(returnBindingSecret);
+      record.bound_secret_hash = bHash;
+      record.bound_secret_salt = bSalt;
+    }
+
+    // Always update monitoring metadata (regardless of ENFORCE_BINDING)
+    if (body.agent_id) record.bound_agent_id = body.agent_id;
+    if (body.device_id) record.last_device_id = body.device_id;
+    record.last_ip = request.headers.get("cf-connecting-ip") || undefined;
+    record.last_seen = new Date().toISOString();
+
+    // Persist updated record
+    await env.CLIENT_REGISTRY.put(`client:${client_id}`, JSON.stringify(record));
+  }
+
   const iat = Math.floor(Date.now() / 1000);
   const claims: JwtClaims = {
     iss: env.TOKEN_ISSUER,
@@ -127,7 +179,11 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
   };
 
   const access_token = await signJwt(claims, env);
-  return json({ access_token, token_type: "Bearer", expires_in: 3600 });
+  const response: Record<string, unknown> = { access_token, token_type: "Bearer", expires_in: 3600 };
+  if (returnBindingSecret) {
+    response.binding_secret = returnBindingSecret;
+  }
+  return json(response);
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -191,6 +247,103 @@ function json(data: object, status = 200): Response {
     },
   });
 }
+
+// ───────────────────────────────────────────────────────────────────────────────
+// GET /admin/clients — list all clients with binding metadata
+// ───────────────────────────────────────────────────────────────────────────────
+
+async function handleAdminListClients(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await verifyAdminJwt(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, 401);
+
+  const url = new URL(request.url);
+  const cursorParam = url.searchParams.get("cursor") || undefined;
+  const PREFIX = "client:";
+
+  const list = await env.CLIENT_REGISTRY.list({ prefix: PREFIX, cursor: cursorParam, limit: 100 });
+  const clients: Array<{
+    client_id: string;
+    scope: string;
+    created_at: string;
+    bound_agent_id?: string;
+    last_device_id?: string;
+    last_ip?: string;
+    last_seen?: string;
+    has_binding: boolean;
+  }> = [];
+
+  for (const key of list.keys) {
+    const record = await env.CLIENT_REGISTRY.get<ClientRecord>(key.name, "json");
+    if (!record) continue;
+    const clientId = key.name.slice(PREFIX.length);
+    clients.push({
+      client_id: clientId,
+      scope: record.scope,
+      created_at: record.created_at,
+      bound_agent_id: record.bound_agent_id,
+      last_device_id: record.last_device_id,
+      last_ip: record.last_ip,
+      last_seen: record.last_seen,
+      has_binding: !!record.bound_secret_hash,
+    });
+  }
+
+  return json({
+    ok: true,
+    clients,
+    cursor: list.list_complete ? undefined : list.cursor,
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// GET /admin/device-overlaps — find same device_id across multiple clients
+// ───────────────────────────────────────────────────────────────────────────────
+
+async function handleAdminDeviceOverlaps(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await verifyAdminJwt(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, 401);
+
+  const url = new URL(request.url);
+  const minClients = parseInt(url.searchParams.get("min_clients") || "2") || 2;
+  const PREFIX = "client:";
+
+  // Scan all clients, group by last_device_id
+  const deviceMap = new Map<string, Array<{ client_id: string; bound_agent_id?: string; last_seen?: string }>>();
+  let cursor: string | undefined;
+
+  do {
+    const list = await env.CLIENT_REGISTRY.list({ prefix: PREFIX, cursor, limit: 100 });
+    for (const key of list.keys) {
+      const record = await env.CLIENT_REGISTRY.get<ClientRecord>(key.name, "json");
+      if (!record?.last_device_id) continue;
+      const clientId = key.name.slice(PREFIX.length);
+      const group = deviceMap.get(record.last_device_id) || [];
+      group.push({ client_id: clientId, bound_agent_id: record.bound_agent_id, last_seen: record.last_seen });
+      deviceMap.set(record.last_device_id, group);
+    }
+    cursor = list.list_complete ? undefined : list.cursor;
+  } while (cursor);
+
+  // Filter to groups with >= minClients
+  const overlaps: Array<{ device_id: string; clients: Array<{ client_id: string; bound_agent_id?: string; last_seen?: string }> }> = [];
+  for (const [deviceId, clients] of deviceMap) {
+    if (clients.length >= minClients) {
+      overlaps.push({ device_id: deviceId, clients });
+    }
+  }
+
+  return json({ ok: true, overlaps });
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ───────────────────────────────────────────────────────────────────────────────
 
 function rateLimitResponse(retryAfterSeconds?: number): Response {
   const headers: Record<string, string> = {

@@ -28,6 +28,7 @@ head_sampling_rate = 1
 TOKEN_ISSUER    = "https://token.aptove.com"
 TOKEN_AUDIENCE  = "https://push.aptove.com"
 ADMIN_CLIENT_ID = "CHANGE_ME_BEFORE_DEPLOY"  # REQUIRED: set a unique non-guessable value per deployment
+ENFORCE_BINDING = "true"                      # Require binding_secret after first use (set "false" for self-hosted)
 
 # Token bucket rate limit configuration (override per deployment)
 TOKEN_BUCKET_CAPACITY = "5"

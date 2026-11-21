@@ -22,6 +22,7 @@ export default defineConfig({
           TOKEN_AUDIENCE: "https://push.aptove.com",
           TOKEN_BUCKET_CAPACITY: "999999",
           TOKEN_REFILL_INTERVAL_MS: "1",
+          ENFORCE_BINDING: "true",
         },
       },
     }),

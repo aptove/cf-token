@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { hashSecret, verifySecret, createClient, getClient, deleteClient } from "../src/clients";
+import { hashSecret, verifySecret, verifyHash, createClient, getClient, deleteClient } from "../src/clients";
 
 describe("hashSecret / verifySecret", () => {
   it("verifies correct secret", async () => {
@@ -68,5 +68,23 @@ describe("createClient / getClient / deleteClient", () => {
     await deleteClient(env.CLIENT_REGISTRY, clientId);
     const record = await getClient(env.CLIENT_REGISTRY, clientId);
     expect(record).toBeNull();
+  });
+});
+
+describe("verifyHash (binding_secret)", () => {
+  it("verifies correct plaintext against hash", async () => {
+    const plaintext = "my-binding-secret-hex-string";
+    const { hashed_secret, salt } = await hashSecret(plaintext);
+    expect(await verifyHash(plaintext, hashed_secret, salt)).toBe(true);
+  });
+
+  it("rejects wrong plaintext", async () => {
+    const { hashed_secret, salt } = await hashSecret("correct-binding");
+    expect(await verifyHash("wrong-binding", hashed_secret, salt)).toBe(false);
+  });
+
+  it("rejects empty plaintext against valid hash", async () => {
+    const { hashed_secret, salt } = await hashSecret("some-secret");
+    expect(await verifyHash("", hashed_secret, salt)).toBe(false);
   });
 });

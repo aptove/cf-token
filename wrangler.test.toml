@@ -14,6 +14,7 @@ TOKEN_AUDIENCE  = "https://push.aptove.com"
 ADMIN_CLIENT_ID = "admin"
 TOKEN_BUCKET_CAPACITY = "999999"
 TOKEN_REFILL_INTERVAL_MS = "1"
+ENFORCE_BINDING = "true"
 
 # Permissive rate limits for tests
 [[ratelimits]]

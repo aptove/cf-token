@@ -213,6 +213,252 @@ describe("DELETE /clients/:id", () => {
   });
 });
 
+// ────────────────────────────────────────
+// Binding secret enforcement
+// ────────────────────────────────────────
+
+describe("POST /token — binding_secret enforcement", () => {
+  it("returns binding_secret on first token request", async () => {
+    const adminJwt = await getAdminJwt();
+    const clientId = `bind-first-${Date.now()}`;
+    const { json: createJson } = await call(
+      "POST",
+      "/clients",
+      { client_id: clientId, scope: "push:write" },
+      { Authorization: `Bearer ${adminJwt}` },
+    );
+    const clientSecret = createJson.client_secret as string;
+
+    const { status, json } = await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+      agent_id: "test-agent-uuid",
+      device_id: "test-device-hash",
+    });
+    expect(status).toBe(200);
+    expect(typeof json.binding_secret).toBe("string");
+    expect((json.binding_secret as string).length).toBe(64);
+    expect(typeof json.access_token).toBe("string");
+  });
+
+  it("requires binding_secret on subsequent requests", async () => {
+    const adminJwt = await getAdminJwt();
+    const clientId = `bind-require-${Date.now()}`;
+    const { json: createJson } = await call(
+      "POST",
+      "/clients",
+      { client_id: clientId, scope: "push:write" },
+      { Authorization: `Bearer ${adminJwt}` },
+    );
+    const clientSecret = createJson.client_secret as string;
+
+    // First request — get binding_secret
+    const { json: firstJson } = await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+    });
+    const bindingSecret = firstJson.binding_secret as string;
+    expect(typeof bindingSecret).toBe("string");
+
+    // Second request without binding_secret → 403
+    const { status: status2, json: json2 } = await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+    });
+    expect(status2).toBe(403);
+    expect(json2.error).toBe("binding_secret_required");
+  });
+
+  it("accepts correct binding_secret on subsequent requests", async () => {
+    const adminJwt = await getAdminJwt();
+    const clientId = `bind-correct-${Date.now()}`;
+    const { json: createJson } = await call(
+      "POST",
+      "/clients",
+      { client_id: clientId, scope: "push:write" },
+      { Authorization: `Bearer ${adminJwt}` },
+    );
+    const clientSecret = createJson.client_secret as string;
+
+    // First request
+    const { json: firstJson } = await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+    });
+    const bindingSecret = firstJson.binding_secret as string;
+
+    // Second request with correct binding_secret
+    const { status, json } = await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+      binding_secret: bindingSecret,
+    });
+    expect(status).toBe(200);
+    expect(typeof json.access_token).toBe("string");
+    // Should NOT return binding_secret again
+    expect(json.binding_secret).toBeUndefined();
+  });
+
+  it("rejects wrong binding_secret", async () => {
+    const adminJwt = await getAdminJwt();
+    const clientId = `bind-wrong-${Date.now()}`;
+    const { json: createJson } = await call(
+      "POST",
+      "/clients",
+      { client_id: clientId, scope: "push:write" },
+      { Authorization: `Bearer ${adminJwt}` },
+    );
+    const clientSecret = createJson.client_secret as string;
+
+    // First request — establish binding
+    await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+    });
+
+    // Second request with wrong binding_secret
+    const { status, json } = await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+      binding_secret: "0".repeat(64),
+    });
+    expect(status).toBe(403);
+    expect(json.error).toBe("invalid_binding_secret");
+  });
+
+  it("stores monitoring metadata (agent_id, device_id, last_seen, last_ip)", async () => {
+    const adminJwt = await getAdminJwt();
+    const clientId = `meta-${Date.now()}`;
+    const { json: createJson } = await call(
+      "POST",
+      "/clients",
+      { client_id: clientId, scope: "push:write" },
+      { Authorization: `Bearer ${adminJwt}` },
+    );
+    const clientSecret = createJson.client_secret as string;
+
+    await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+      agent_id: "agent-uuid-123",
+      device_id: "device-hash-456",
+    });
+
+    // Read the client record directly from KV
+    const record = await env.CLIENT_REGISTRY.get<Record<string, unknown>>(`client:${clientId}`, "json");
+    expect(record).not.toBeNull();
+    expect(record!.bound_agent_id).toBe("agent-uuid-123");
+    expect(record!.last_device_id).toBe("device-hash-456");
+    expect(typeof record!.last_seen).toBe("string");
+  });
+});
+
+// ────────────────────────────────────────
+// Admin endpoints
+// ────────────────────────────────────────
+
+describe("GET /admin/clients", () => {
+  it("lists clients with binding metadata", async () => {
+    const adminJwt = await getAdminJwt();
+    const clientId = `admin-list-${Date.now()}`;
+    const { json: createJson } = await call(
+      "POST",
+      "/clients",
+      { client_id: clientId, scope: "push:write" },
+      { Authorization: `Bearer ${adminJwt}` },
+    );
+    const clientSecret = createJson.client_secret as string;
+
+    // Make a token request to populate monitoring metadata
+    await call("POST", "/token", {
+      client_id: clientId,
+      client_secret: clientSecret,
+      agent_id: "list-test-agent",
+    });
+
+    const { status, json } = await call(
+      "GET",
+      "/admin/clients",
+      undefined,
+      { Authorization: `Bearer ${adminJwt}` },
+    );
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(Array.isArray(json.clients)).toBe(true);
+
+    const clients = json.clients as Array<Record<string, unknown>>;
+    const found = clients.find((c) => c.client_id === clientId);
+    expect(found).toBeDefined();
+    expect(found!.bound_agent_id).toBe("list-test-agent");
+    expect(found!.has_binding).toBe(true);
+  });
+
+  it("rejects without admin JWT", async () => {
+    const { status } = await call("GET", "/admin/clients");
+    expect(status).toBe(401);
+  });
+});
+
+describe("GET /admin/device-overlaps", () => {
+  it("detects same device_id across multiple clients", async () => {
+    const adminJwt = await getAdminJwt();
+    const sharedDeviceId = `shared-device-${Date.now()}`;
+
+    // Create two clients with the same device_id
+    for (let i = 0; i < 2; i++) {
+      const clientId = `overlap-${i}-${Date.now()}`;
+      const { json: createJson } = await call(
+        "POST",
+        "/clients",
+        { client_id: clientId, scope: "push:write" },
+        { Authorization: `Bearer ${adminJwt}` },
+      );
+      const clientSecret = createJson.client_secret as string;
+
+      // First token request gets binding_secret
+      const { json: tokenJson } = await call("POST", "/token", {
+        client_id: clientId,
+        client_secret: clientSecret,
+        device_id: sharedDeviceId,
+      });
+
+      // Second token request uses binding_secret (to avoid 403)
+      if (tokenJson.binding_secret) {
+        await call("POST", "/token", {
+          client_id: clientId,
+          client_secret: clientSecret,
+          device_id: sharedDeviceId,
+          binding_secret: tokenJson.binding_secret,
+        });
+      }
+    }
+
+    const { status, json } = await call(
+      "GET",
+      "/admin/device-overlaps?min_clients=2",
+      undefined,
+      { Authorization: `Bearer ${adminJwt}` },
+    );
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(Array.isArray(json.overlaps)).toBe(true);
+
+    const overlaps = json.overlaps as Array<Record<string, unknown>>;
+    const found = overlaps.find((o) => o.device_id === sharedDeviceId);
+    expect(found).toBeDefined();
+    expect((found!.clients as unknown[]).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("rejects without admin JWT", async () => {
+    const { status } = await call("GET", "/admin/device-overlaps");
+    expect(status).toBe(401);
+  });
+});
+
+// ────────────────────────────────────────
+// Unknown routes
+// ────────────────────────────────────────
+
 describe("Unknown routes", () => {
   it("returns 404 for unknown path", async () => {
     const { status, json } = await call("GET", "/unknown");
